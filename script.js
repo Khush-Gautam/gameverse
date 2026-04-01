@@ -35,14 +35,35 @@ const state = {
 /* =========================================================
    ② API
    ========================================================= */
-const API_URL = 'https://api.allorigins.win/raw?url=' + encodeURIComponent('https://www.freetogame.com/api/games');
+const FREETOGAME_API = 'https://www.freetogame.com/api/games';
+
+// Multiple CORS proxies as fallbacks — if one is down, the next is tried
+const PROXY_LIST = [
+  (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+  (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+  (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+];
+
+async function tryFetch(url) {
+  // Try each proxy in order
+  for (const makeProxy of PROXY_LIST) {
+    try {
+      const proxyUrl = makeProxy(url);
+      const response = await fetch(proxyUrl, { signal: AbortSignal.timeout(8000) });
+      if (!response.ok) continue; // try next proxy
+      const data = await response.json();
+      if (Array.isArray(data) && data.length > 0) return data; // success!
+    } catch (_) {
+      // This proxy failed — try the next one
+    }
+  }
+  throw new Error('All proxies failed. Please check your internet connection and try again.');
+}
 
 async function fetchGames() {
   showLoading();
   try {
-    const response = await fetch(API_URL);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const data = await response.json();
+    const data = await tryFetch(FREETOGAME_API);
     state.allGames = data;
     loadFavourites();
     populateGenreFilter(data);
